@@ -1,3 +1,5 @@
+> **Fork CYD 3,2"** — esta rama (`cyd32c`) adapta Blink a la ESP32-2432S032C (3,2" capacitiva) con vista combinada Claude + Codex y barra de Fable. Cambios, flasheo y compilación en **[README-CYD32C.md](README-CYD32C.md)**. Original: [KfirLevy258/Blink](https://github.com/KfirLevy258/Blink).
+
 <div align="center">
 
 <a href="https://blink-buddy.com"><img src="docs/img/brand/logo-wide.png" alt="BLINK" width="420"></a>
