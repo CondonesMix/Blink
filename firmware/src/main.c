@@ -74,9 +74,10 @@ static const struct device *const display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_d
  * window coordinates and its pixels mirror together, and the panel's own
  * reversed wiring cancels them back out.
  */
-#ifdef CONFIG_BLINK_PANEL_PILOT
+#if defined(CONFIG_BLINK_PANEL_PILOT) || defined(CONFIG_BLINK_BOARD_CYD32C)
 
-/* Pilot panels need none of it: the stock rotation=90 MADCTL (BGR|MV) that the
+/* CYD32C: the ST7789 takes its MADCTL from the devicetree (mdac).
+ * Pilot panels need none of it: the stock rotation=90 MADCTL (BGR|MV) that the
  * driver writes is already correct for them, mirror and colour order alike. */
 static void panel_fix_madctl(void)
 {
@@ -684,6 +685,10 @@ int main(void)
 		return -1;
 	}
 	panel_fix_madctl();
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+	printk("[touch] gt911 %s\n",
+	       device_is_ready(DEVICE_DT_GET(DT_NODELABEL(gt911))) ? "ready" : "NOT ready");
+#endif
 	display_blanking_off(display_dev);
 	ui_touchfx_init();	/* light touch-echo feedback on every press */
 

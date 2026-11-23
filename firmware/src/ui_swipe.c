@@ -59,8 +59,15 @@
  * applies do not matter here. That is also why nothing needs revisiting if
  * min-x/max-x are ever recalibrated.
  */
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+/* GT911 on the 3.2" CYD: screen_x = ABS_Y, screen_y = 240 - ABS_X, so the
+ * vertical delta runs the other way. Only deltas are used here. */
+#define SCREEN_DX(chan_x, chan_y)	(chan_y)
+#define SCREEN_DY(chan_x, chan_y)	(-(chan_x))
+#else
 #define SCREEN_DX(chan_x, chan_y)	(chan_y)
 #define SCREEN_DY(chan_x, chan_y)	(chan_x)
+#endif
 
 /*
  * How often the LVGL side looks for something to do.
@@ -257,6 +264,17 @@ static void input_cb(struct input_event *evt, void *user_data)
 		break;
 	}
 	if (evt->sync) {
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+		/* Port bring-up: the first few raw GT911 reports, to check the
+		 * axis mapping from the console. */
+		static int diag_n;
+
+		if (diag_n < 12) {
+			diag_n++;
+			printk("[touch] raw x=%d y=%d down=%d\n", (int)cur_x,
+			       (int)cur_y, (int)cur_down);
+		}
+#endif
 		report();
 	}
 }
@@ -327,6 +345,8 @@ void ui_swipe_init(void (*on_swipe)(enum ui_swipe_dir dir),
 
 #if DT_NODE_EXISTS(DT_NODELABEL(xpt2046))
 INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(DT_NODELABEL(xpt2046)), input_cb, NULL);
+#elif DT_NODE_EXISTS(DT_NODELABEL(gt911))
+INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(DT_NODELABEL(gt911)), input_cb, NULL);
 #else
 #error "ui_swipe needs the xpt2046 node: it reads the panel, not LVGL's replay"
 #endif

@@ -12,6 +12,21 @@ config BLINK_TOUCH_TRACE
 	  the console when the finger lifts. Diagnostic only -- enable via
 	  trace.conf, never in a release build.
 
+config BLINK_BOARD_CYD32C
+	bool "Build for the ESP32-2432S032C (3.2\" CYD, ST7789 + GT911)"
+	help
+	  Port to the 3.2 inch capacitive CYD. Pair with
+	  boards/cyd32c.overlay and cyd32c.conf. The ST7789 driver sets
+	  MADCTL from the devicetree, so the ILI9341 MADCTL correction is
+	  skipped, and the swipe detector uses the GT911's axis frame.
+
+config BLINK_DUAL_WEEKLY
+	bool "Show both providers' weekly windows side by side"
+	help
+	  With two providers reporting, the gauge screen shows the first
+	  provider's weekly window on the left ring and the second's on the
+	  right, instead of one provider per page.
+
 config BLINK_PANEL_PILOT
 	bool "Build for the two pilot (POC) display panels"
 	help
