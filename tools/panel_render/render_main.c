@@ -683,6 +683,17 @@ int main(int argc, char **argv)
 		spend_desk(314.12, 500, true, false, 62.8);
 		sburn_line(sburn_rising, 181 * 1000);
 		break;
+	case 99: case 98: /* CYD32C dual weekly + Fable (98: Fable 64%) */
+		usage_view_set_provider1("claude");
+		usage_view_update(-1.0, -1, 55.0, 18 * 3600 + 40 * 60);
+		usage_view_set_provider2("codex", -1.0, 31.0, -1,
+					 4 * 86400 + 3 * 3600, false);
+		usage_view_set_fable(scene == 99 ? 100.0 : 64.0,
+				     18 * 3600 + 40 * 60);
+		usage_view_set_activity(USAGE_ACTIVITY_RUNNING);
+		usage_view_set_sessions(1, 0);
+		usage_view_set_clock(14, 19);
+		break;
 	case 4:	/* nothing known: every optional field absent */
 		usage_view_set_provider1("");
 		usage_view_update(-1.0, -1, -1.0, -1);

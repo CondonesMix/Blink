@@ -300,10 +300,12 @@ static void tag_cased(char *dst, size_t n, const char *tag)
 	}
 }
 
+static bool dual_view(void);
 static int page_count(void)
 {
 	return provider2_tag[0] ? 2 : 1;
 }
+
 
 /*
  * THE SPEND PAGE. A Claude Enterprise seat behind a Claude apps gateway has a
@@ -347,6 +349,112 @@ static enum plan_kind plan_of(int page)
 		return PLAN_KIND_WINDOWS;
 	}
 	return plan_rec.kind;
+}
+
+/*
+ * DUAL WEEKLY (CONFIG_BLINK_DUAL_WEEKLY, CYD32C port). With two providers
+ * reporting, both weekly windows side by side: the left ring is page 0's
+ * weekly, the right ring page 1's. Paging is off while it holds; Focus or a
+ * spend page fall back to the normal paged screen.
+ */
+static bool dual_view(void)
+{
+#ifdef CONFIG_BLINK_DUAL_WEEKLY
+	extern bool usage_view_get_dual(void);
+	return usage_view_get_dual() &&
+	       provider2_tag[0] && pg[0].have && pg[1].have && !focus_on &&
+	       plan_of(0) == PLAN_KIND_WINDOWS && plan_of(1) == PLAN_KIND_WINDOWS;
+#else
+	return false;
+#endif
+}
+
+/* Fable's weekly window (Claude's model-scoped limit), shown small inside
+ * the Claude ring in the dual view. -1 = unknown. Fed by the "models"
+ * message, which the patched daemon sends beside the usage line. */
+static double fable_pct = -1;
+static int32_t fable_in_s = -1;
+static lv_obj_t *fable_name, *fable_bar, *fable_val;
+static void show_obj(lv_obj_t *o, bool on);
+static lv_color_t severity(double pct);
+
+#ifndef FABLE_STYLE
+#define FABLE_STYLE 1	/* 1: centred row at the bottom; 2: under the Claude ring */
+#endif
+
+static void fable_build(lv_obj_t *scr)
+{
+	fable_name = lv_label_create(scr);
+	lv_obj_set_style_text_font(fable_name, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_color(fable_name, COL_DIM, 0);
+	lv_label_set_text(fable_name, "Fable");
+
+	fable_val = lv_label_create(scr);
+	lv_obj_set_style_text_font(fable_val, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_color(fable_val, COL_TEXT, 0);
+	lv_label_set_text(fable_val, "--%");
+
+	fable_bar = lv_bar_create(scr);
+	lv_bar_set_range(fable_bar, 0, 100);
+	lv_obj_set_style_radius(fable_bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+	lv_obj_set_style_radius(fable_bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+	lv_obj_set_style_bg_opa(fable_bar, LV_OPA_COVER, LV_PART_MAIN);
+	lv_obj_set_style_bg_color(fable_bar, COL_TRACK, LV_PART_MAIN);
+	lv_obj_set_style_pad_all(fable_bar, 0, LV_PART_MAIN);
+#if FABLE_STYLE == 1
+	/* "Fable  ████████░░░  100%", centred where the page pill sits. */
+	lv_obj_set_size(fable_bar, 150, 6);
+	lv_obj_align(fable_bar, LV_ALIGN_BOTTOM_MID, 0, -PILL_BOTTOM_OFF - 7);
+	lv_obj_align_to(fable_name, fable_bar, LV_ALIGN_OUT_LEFT_MID, -10, 0);
+	lv_obj_set_width(fable_val, 44);
+	lv_obj_set_style_text_align(fable_val, LV_TEXT_ALIGN_LEFT, 0);
+	lv_obj_align_to(fable_val, fable_bar, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
+#else
+	/* Under the Claude ring: name left, figure right, thin bar beneath. */
+	lv_obj_set_size(fable_bar, 104, 4);
+	lv_obj_align(fable_bar, LV_ALIGN_TOP_MID, -GAUGE_CX, 224);
+	lv_obj_align_to(fable_name, fable_bar, LV_ALIGN_OUT_TOP_LEFT, 0, -3);
+	lv_obj_set_width(fable_val, 44);
+	lv_obj_set_style_text_align(fable_val, LV_TEXT_ALIGN_RIGHT, 0);
+	lv_obj_align_to(fable_val, fable_bar, LV_ALIGN_OUT_TOP_RIGHT, 0, -3);
+#endif
+}
+
+static void render_fable(void)
+{
+	char t[12];
+	bool on = fable_bar && dual_view() && fable_pct >= 0;
+
+	if (!fable_bar) {
+		return;
+	}
+	show_obj(fable_bar, on);
+	show_obj(fable_name, on);
+	show_obj(fable_val, on);
+	if (!on) {
+		return;
+	}
+	snprintf(t, sizeof(t), "%d%%", (int)(fable_pct + 0.5));
+	lv_label_set_text(fable_val, t);
+	lv_bar_set_value(fable_bar, fable_pct > 100 ? 100 : (int32_t)(fable_pct + 0.5),
+			 LV_ANIM_OFF);
+	lv_obj_set_style_bg_color(fable_bar, severity(fable_pct), LV_PART_INDICATOR);
+	lv_obj_set_style_text_color(fable_val, severity(fable_pct), 0);
+}
+
+/* The Settings "View" tile: both weeklies side by side, or the pages. */
+static bool dual_wanted = true;
+
+bool usage_view_get_dual(void)
+{
+	return dual_wanted;
+}
+
+void usage_view_set_fable(double pct, int32_t resets_in_s)
+{
+	fable_pct = pct;
+	fable_in_s = resets_in_s;
+	render_fable();
 }
 
 static struct gauge *focus_big(void)
@@ -1125,6 +1233,7 @@ void usage_view_deinit(void)
 	 * they are data (usage_view_set_burn5h). */
 	burn_obj = NULL;
 	burn_on = false;
+	fable_name = fable_bar = fable_val = NULL;
 	for (int i = 0; i < PIP_MAX; i++) {
 		pip[i] = NULL;
 		pip_num[i] = NULL;
@@ -1363,6 +1472,7 @@ void usage_view_init(void)
 
 	build_gauge(&session, scr, -GAUGE_CX, "SESSION 5h");
 	build_gauge(&weekly, scr, GAUGE_CX, "WEEKLY 7d");
+	fable_build(scr);	/* dual view: Fable's weekly as a bar */
 	/* Hidden until an account with no session window has a burn line to
 	 * show; layout_gauges() below is what decides. Before the chevrons,
 	 * the toast and the takeover, so all three still draw over it. */
@@ -1561,6 +1671,38 @@ static void render_gauges(void)
 	if (!built) {
 		return;
 	}
+	if (dual_view()) {
+		char a[USAGE_TAG_MAX + 4], b[USAGE_TAG_MAX + 4];
+		char ta[USAGE_TAG_MAX], tb[USAGE_TAG_MAX];
+		int i;
+
+		tag_cased(ta, sizeof(ta), page_tag(0));
+		tag_cased(tb, sizeof(tb), page_tag(1));
+		for (i = 0; ta[i]; i++) {
+			ta[i] = (ta[i] >= 'a' && ta[i] <= 'z') ? ta[i] - 32 : ta[i];
+		}
+		for (i = 0; tb[i]; i++) {
+			tb[i] = (tb[i] >= 'a' && tb[i] <= 'z') ? tb[i] - 32 : tb[i];
+		}
+		snprintf(a, sizeof(a), "%s 7d", ta);
+		snprintf(b, sizeof(b), "%s 7d", tb);
+		lv_label_set_text(session.name, a);
+		lv_label_set_text(weekly.name, b);
+		set_pct_font(&weekly, &lv_font_montserrat_20);
+		paint_pct(&session, pg[0].w_pct);
+		session.resets_in_s = pg[0].w_in_s;
+		session.burn = -1;
+		render_countdown(&session);
+		paint_pct(&weekly, pg[1].w_pct);
+		weekly.resets_in_s = pg[1].w_in_s;
+		render_countdown(&weekly);
+		last_s_pct = pg[0].w_pct;
+		last_w_pct = pg[1].w_pct;
+		render_fable();
+		refresh_provider1();
+		burn_sync();
+		return;
+	}
 	/*
 	 * Focus puts the share in the middle of a spend page whatever the
 	 * owner chose, so a plan arriving, or a page change landing, can move
@@ -1591,6 +1733,7 @@ static void render_gauges(void)
 	last_w_pct = p->w_pct;
 	render_captions();
 	render_weekly();
+	render_fable();		/* hides itself outside the dual view */
 	refresh_provider1();	/* the name under the brand follows the page */
 	/*
 	 * Last, after the gauge holds this page's numbers: a session reading
@@ -1690,7 +1833,7 @@ static int lerp_px(int a, int b, int pct)
 
 static void refresh_rail(void)
 {
-	int n = page_count();
+	int n = dual_view() ? 1 : page_count();
 	int span = n * RAIL_PITCH - (RAIL_PITCH - RAIL_DOT_W);
 	int x = (SCR_W - span) / 2;
 	bool handing_over;
@@ -1790,7 +1933,7 @@ bool usage_view_can_page(int delta)
 	int n = page_count();
 	int next = cur_page + delta;
 
-	return built && n >= 2 && next >= 0 && next < n;
+	return built && !dual_view() && n >= 2 && next >= 0 && next < n;
 }
 
 /*
@@ -2551,7 +2694,7 @@ static void burn_sync(void)
 	 * with its share unknown ("--%" with no cap): the half is money there.
 	 * Every other page, the token view where there is no session window.
 	 */
-	if (!focus_on && pg[cur_page].have) {
+	if (!focus_on && !dual_view() && pg[cur_page].have) {
 		if (plan_of(cur_page) == PLAN_KIND_SPEND) {
 			dollars = true;
 			s = burn_fresh_slot(sburn_slot, page_tag(cur_page));
@@ -2677,7 +2820,7 @@ void usage_view_update(double session_pct, int32_t session_resets_in_s,
 	have_data = true;
 	age_s = 0;
 	refresh_rail();		/* page 0's mark, even while page 1 is showing */
-	if (cur_page == 0) {
+	if (cur_page == 0 || dual_view()) {
 		render_gauges();
 	}
 	render_age();
@@ -2803,19 +2946,32 @@ void usage_view_tick_1s(void)
 			if (plan_of(i) == PLAN_KIND_SPEND && plan_rec.usd >= 0) {
 				plan_rec.usd = 0;
 			}
-			if (i == cur_page) {
+			if (i == cur_page && !dual_view()) {
 				expire_session();
 			}
 		}
 		if (pg[i].w_in_s > 0 && --pg[i].w_in_s == 0) {
 			pg[i].w_in_s = -1;
 			pg[i].w_pct = 0;
-			if (i == cur_page) {
+			if (dual_view()) {
+				render_gauges();
+			} else if (i == cur_page) {
 				expire_weekly();
 			}
 		}
 	}
-	if (pg[cur_page].have) {
+	if (fable_in_s > 0 && --fable_in_s == 0) {
+		fable_in_s = -1;
+		fable_pct = 0;
+		render_fable();
+	}
+	if (dual_view()) {
+		session.resets_in_s = pg[0].w_in_s;
+		session.burn = -1;
+		weekly.resets_in_s = pg[1].w_in_s;
+		render_countdown(&session);
+		render_countdown(&weekly);
+	} else if (pg[cur_page].have) {
 		session.resets_in_s = pg[cur_page].s_in_s;
 		session.burn = pg[cur_page].burn;
 		weekly.resets_in_s = pg[cur_page].w_in_s;
@@ -3344,6 +3500,7 @@ static void refresh_provider1(void)
 
 		tag_cased(t, sizeof(t), tag);
 		lv_label_set_text(provider_lbl, t);
+		show_obj(provider_lbl, !dual_view());
 		/*
 		 * The fill is what says "you can press this", so it is there
 		 * only when pressing does something. A single-provider desk
@@ -3352,7 +3509,7 @@ static void refresh_provider1(void)
 		 * rail follows by hiding its dots below two pages.
 		 */
 		lv_obj_set_style_bg_opa(provider_lbl,
-					page_count() >= 2 ? LV_OPA_COVER
+					(page_count() >= 2 && !dual_view()) ? LV_OPA_COVER
 							  : LV_OPA_TRANSP, 0);
 		/*
 		 * Hugs its text. A fixed width made a pill wide enough for
@@ -3402,7 +3559,7 @@ void usage_view_set_burn(double pph)
 	 * why it never needs one.
 	 */
 	pg[0].burn = pph;
-	if (built && cur_page == 0) {
+	if (built && cur_page == 0 && !dual_view()) {
 		session.burn = pph;
 		render_countdown(&session);
 	}
@@ -3473,8 +3630,8 @@ void usage_view_set_provider2(const char *tag, double session_pct,
 		pg[1].have = false;
 		if (cur_page != 0) {
 			cur_page = 0;
-			render_gauges();
 		}
+		render_gauges();
 		refresh_rail();
 		return;
 	}
@@ -3496,7 +3653,7 @@ void usage_view_set_provider2(const char *tag, double session_pct,
 	pg[1].have = true;
 
 	refresh_rail();
-	if (cur_page == 1) {
+	if (cur_page == 1 || dual_view()) {
 		render_gauges();
 	}
 }
@@ -4047,3 +4204,16 @@ void usage_view_set_plan(const char *prov, const char *plan,
 		usage_view_set_status(last_status);
 	}
 }
+
+void usage_view_set_dual(bool on)
+{
+	dual_wanted = on;
+	if (built) {
+		if (!on) {
+			cur_page = 0;
+		}
+		render_gauges();
+		refresh_rail();
+	}
+}
+

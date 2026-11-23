@@ -102,6 +102,9 @@ static const char *bench_nt;
 #define bench_nt_clear() ((void)0)
 #endif
 static lv_obj_t *upd_btn;
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+static lv_obj_t *view_lbl;
+#endif
 static lv_obj_t *upd_lbl;
 static lv_timer_t *upd_timer;	/* whole session, not just the panel */
 /* Download progress. Full-screen and touch-swallowing on purpose, so it must
@@ -2049,6 +2052,9 @@ static void show_focus(lv_event_t *e);
 static void panel_empty(void)
 {
 	upd_btn = NULL;
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+	view_lbl = NULL;
+#endif
 	upd_lbl = NULL;
 	pct_lbl = NULL;
 	focus_sub = NULL;
@@ -2947,6 +2953,9 @@ static void show_theme(bool fresh)
 	 * panel object itself stays, so everything that asks "is settings
 	 * open" still gets yes, and its own gesture handler still runs. */
 	upd_btn = NULL;
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+	view_lbl = NULL;
+#endif
 	upd_lbl = NULL;
 	pct_lbl = NULL;
 	focus_forget();		/* the Focus row's subtitle goes too */
@@ -3656,6 +3665,21 @@ static void bright_row_cb(lv_event_t *e)
 	}
 }
 
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+static void view_row_cb(lv_event_t *e)
+{
+	ARG_UNUSED(e);
+	if (!tile_was_a_tap()) {
+		return;
+	}
+	usage_view_set_dual(!usage_view_get_dual());
+	if (view_lbl) {
+		lv_label_set_text(view_lbl,
+				  usage_view_get_dual() ? "Both" : "Pages");
+	}
+}
+#endif
+
 static void focus_row_cb(lv_event_t *e)
 {
 	ARG_UNUSED(e);
@@ -3791,6 +3815,9 @@ static void do_close(void (*pump)(void))
 	/* upd_timer deliberately survives the panel -- see upd_timer_cb. It is
 	 * created once in ui_settings_attach(). */
 	upd_btn = NULL;		/* dies with the panel */
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+	view_lbl = NULL;
+#endif
 	upd_lbl = NULL;
 	pct_lbl = NULL;
 	bright_big = NULL;
@@ -3969,6 +3996,9 @@ static void rebuild_cb(void *unused)
 	lv_obj_t *scr = lv_obj_get_parent(panel);
 
 	upd_btn = NULL;
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+	view_lbl = NULL;
+#endif
 	upd_lbl = NULL;
 	pct_lbl = NULL;
 	bright_big = NULL;
@@ -4106,8 +4136,17 @@ static void build_panel(lv_obj_t *parent_scr)
 	edit_paint();	/* a note outlives the panel it was drawn on */
 	mk_tile(panel, 2, &settings_icon_focus, "Focus", focus_name(),
 		focus_row_cb, &focus_sub);
+#ifdef CONFIG_BLINK_BOARD_CYD32C
+	/* Port build: no Update tile -- official images are for the 2.8"
+	 * board and are signed with another key. The slot toggles the
+	 * combined weekly view instead. */
+	mk_tile(panel, 3, &settings_icon_focus, "View",
+		usage_view_get_dual() ? "Both" : "Pages", view_row_cb,
+		&view_lbl);
+#else
 	upd_btn = mk_tile(panel, 3, &settings_icon_update, "Update", "",
 			  upd_cb, &upd_lbl);
+#endif
 	mk_tile(panel, 4, &settings_icon_link, "Connection",
 		proto_link_kind() == 2 ? "WiFi" :
 		proto_link_kind() == 1 ? "USB" : "None", conn_row_cb, NULL);

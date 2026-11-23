@@ -1786,6 +1786,7 @@ class Bridge:
         self._last_usage_at = self._now()
 
         self._send_session_if_changed()
+        self._send_models_if_due()
 
         # Which pages the board has is read off the line it was just sent:
         # `provider` is the outer ring and `p2`, when present, the inner one
@@ -1821,6 +1822,42 @@ class Bridge:
         # stale, purely because that string already mapped to amber -- which
         # left a stale reading and a real rate limit indistinguishable on the
         # panel, and put the wrong words in the log.
+
+    def _send_models_if_due(self):
+        """CYD32C port: Claude's model-scoped weekly window (Fable) on its
+        own "models" line, read from the cachedUsageUtilization that Claude
+        Code's /usage writes. Sent on change, and at least once a minute so
+        a board that reconnected hears it again. Never raises."""
+        try:
+            import datetime as _dt
+            import json as _json
+            from . import claude_plan as _cp
+            with open(_cp.config_path(), "r", encoding="utf-8") as f:
+                cache = (_json.load(f) or {}).get("cachedUsageUtilization") or {}
+            pct, in_s = None, -1
+            for lim in ((cache.get("utilization") or {}).get("limits") or []):
+                scope = lim.get("scope") or {}
+                model = (scope.get("model") or {}) if isinstance(scope, dict) else {}
+                name = str(model.get("display_name") or model.get("id") or "")
+                if lim.get("kind") == "weekly_scoped" and "fable" in name.lower():
+                    pct = lim.get("percent")
+                    ra = lim.get("resets_at")
+                    if ra:
+                        t = _dt.datetime.fromisoformat(str(ra).replace("Z", "+00:00"))
+                        in_s = max(-1, int(t.timestamp() - self._now()))
+                    break
+            if pct is None:
+                return
+            msg = {"t": "models", "v": protocol.VERSION,
+                   "fable_pct": round(float(pct), 1), "fable_w_in_s": in_s}
+            key = (msg["fable_pct"], in_s // 60)
+            now = self._now()
+            if key != getattr(self, "_last_models", None) or \
+                    now - getattr(self, "_last_models_at", 0) >= 60:
+                self._last_models, self._last_models_at = key, now
+                self._write(msg)
+        except Exception as e:          # a cosmetic line must never stop usage
+            print(f"[models] skipped ({type(e).__name__})", file=sys.stderr)
 
     def _send_session_if_changed(self):
         """Put the project name on the wire, on change only.

@@ -135,6 +135,11 @@ void usage_view_hold_half(bool hold);
  * today are all-models + fable); -1 = unknown. Fed by either data source
  * alongside the headline numbers. */
 void usage_view_set_models(double fable_pct);
+/* Fable weekly % and its reset countdown (s), from the "models" message. */
+void usage_view_set_fable(double pct, int32_t resets_in_s);
+/* CYD32C: combined weekly view on/off (Settings "View" tile). */
+void usage_view_set_dual(bool on);
+bool usage_view_get_dual(void);
 
 void usage_view_set_status(enum usage_status status);
 

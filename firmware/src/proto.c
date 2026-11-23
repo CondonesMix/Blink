@@ -1617,6 +1617,14 @@ static void dispatch(const char *json, enum proto_src src)
 		printk("[usage] session %.0f%% (%ds)  weekly %.0f%% (%ds)%s%s\n",
 		       sp, (int)ss, wp, (int)ws, stale ? "  STALE" : "",
 		       act == USAGE_ACTIVITY_NONE ? "" : " +state");
+	} else if (strcmp(type, "models") == 0) {
+		/* CYD32C port: Claude's model-scoped weekly (Fable), sent by the
+		 * patched daemon on its own line -- the usage line has no room. */
+		double fp = -1, fi = -1;
+
+		num_pct(json, "fable_pct", &fp, 0);
+		num(json, "fable_w_in_s", &fi, -1, SECS_MAX);
+		usage_view_set_fable(fp, (int32_t)fi);
 	} else if (strcmp(type, "time") == 0) {
 		double epoch = 0, off = 0;
 
@@ -1837,6 +1845,13 @@ static void dispatch(const char *json, enum proto_src src)
 
 		msg_get_double(json, "editing", &editing);
 		ui_settings_theme_edit_state(editing == 1);
+	} else if (IS_ENABLED(CONFIG_BLINK_BOARD_CYD32C) &&
+		   (strcmp(type, "ota_avail") == 0 ||
+		    strcmp(type, "ota_begin") == 0)) {
+		/* Port build: official firmware is for the 2.8" board and
+		 * signed with another key, so offers are refused outright --
+		 * no prompt, no install. Reflash by cable instead. */
+		printk("[proto] %s ignored (CYD32C port build)\n", type);
 	} else if (strcmp(type, "ota_avail") == 0) {
 		double sz = 0;
 
